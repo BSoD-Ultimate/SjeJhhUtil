@@ -1,3 +1,6 @@
+﻿/*
+ * RAII classes used to manage cryptography handles
+*/
 #pragma once
 
 #include <wincrypt.h>
