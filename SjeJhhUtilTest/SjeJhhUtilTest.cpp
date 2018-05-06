@@ -43,6 +43,7 @@ bool CreateDirectoryWithSubdir(const std::wstring& dir)
         return dirString;
     };
     AddDirSeparator(tempDir);
+
     std::vector<std::wstring> dirs;		
     std::wstring temp;	
     std::wstring baseDir = tempDir;
@@ -135,6 +136,11 @@ static void testUnpackSJEJHHArchive(const wchar_t* filePath)
     sjejhh_unpack_close(pArchive);
 }
 
+static void testPackSJEJHHArchive(const char* internalFolderName, const wchar_t* saveFilename)
+{
+
+}
+
 int main(int argc, char** argv)
 {
     // test encrypting & decrypting memory data
@@ -155,6 +161,7 @@ int main(int argc, char** argv)
     testUnpackSJEJHHArchive(L"testdata/SJE.JHH-ui");
     testUnpackSJEJHHArchive(L"testdata/SJE.JHH-skin-multi-default");
 
+    // test packing "SJE.JHH" archives
     return 0;
 }
 

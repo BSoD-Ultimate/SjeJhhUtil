@@ -247,10 +247,74 @@ extern "C" {
 
     SJEJHHUTIL_API int sjejhh_unpack_close(sjejhh_unpack_context* pArchive);
 
+
+
+
     /*
     * functions used to pack a "SJE.JHH" archive
     */
     typedef struct sjejhh_pack_context sjejhh_pack_context;
+
+    typedef enum _sjejhh_pack_error_code
+    {
+
+    }sjejhh_pack_error_code;
+
+    typedef struct _sjejhh_pack_global_info
+    {
+
+    }sjejhh_pack_global_info;
+
+    typedef enum _sjejhh_pack_file_type
+    {
+        SJEJHH_PACK_FILETYPE_UNKNOWN,
+        SJEJHH_PACK_FILETYPE_FILEPATH, 
+        SJEJHH_PACK_FILETYPE_MEMORYDATA,
+    }sjejhh_pack_file_type;
+
+    typedef struct _sjejhh_pack_file_info
+    {
+
+    }sjejhh_pack_file_info;
+
+    typedef int(*sjejhh_pack_enum_file_callback)(sjejhh_pack_context*, sjejhh_pack_file_info, void*);
+
+    SJEJHHUTIL_API sjejhh_pack_context* sjejhh_pack_create_file(
+        const char* internalFolderName,
+        const wchar_t* filePath
+    );
+
+    SJEJHHUTIL_API int sjejhh_pack_add_file(
+        sjejhh_pack_context* pArchive,
+        const wchar_t* filePath
+    );
+
+    SJEJHHUTIL_API int sjejhh_pack_add_memory_data(
+        sjejhh_pack_context* pArchive,
+        const char* inputBuf,
+        uint32_t inputBufLen,
+        const char* filename,
+        int copyData
+    );
+
+    SJEJHHUTIL_API int sjejhh_pack_remove_file(
+        sjejhh_pack_context* pArchive,
+        const wchar_t* filenameOrPath
+    );
+
+    SJEJHHUTIL_API int sjejhh_pack_enum_files(
+        sjejhh_pack_context* pArchive,
+        sjejhh_pack_enum_file_callback enumCallback,
+        void* userdata
+    );
+
+    SJEJHHUTIL_API int sjejhh_pack_close(sjejhh_pack_context* pArchive);
+
+    SJEJHHUTIL_API int sjejhh_pack_do_pack(sjejhh_pack_context* pArchive);
+
+    SJEJHHUTIL_API int sjejhh_pack_close(sjejhh_pack_context* pArchive);
+
+
 
 #ifdef __cplusplus
 }

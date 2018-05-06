@@ -330,7 +330,7 @@ struct FileInfoBlob
 };
 
 /* *********************************************************************************
- * Unpack SJE.JHH files
+ * APIs used for unpacking "SJE.JHH" archives
  * 
  * *********************************************************************************
 */
@@ -731,6 +731,63 @@ SJEJHHUTIL_API int sjejhh_unpack_goto_next_file(sjejhh_unpack_context* pArchive)
 }
 
 SJEJHHUTIL_API int sjejhh_unpack_close(sjejhh_unpack_context* pArchive)
+{
+    delete pArchive;
+    return 0;
+}
+
+
+/* *********************************************************************************
+* APIs used for packing "SJE.JHH" archives
+*
+* *********************************************************************************
+*/
+
+struct sjejhh_pack_context
+{
+
+};
+
+
+SJEJHHUTIL_API sjejhh_pack_context* sjejhh_pack_create_file(const char* internalFolderName, const wchar_t* filePath)
+{
+    try
+    {
+        std::unique_ptr<sjejhh_pack_context> pContext(new sjejhh_pack_context());
+        return pContext.release();
+    }
+    catch (const std::runtime_error& e)
+    {
+        return nullptr;
+    }
+}
+
+SJEJHHUTIL_API int sjejhh_pack_add_file(sjejhh_pack_context* pArchive, const wchar_t* filePath)
+{
+    return 0;
+}
+
+SJEJHHUTIL_API int sjejhh_pack_add_memory_data(sjejhh_pack_context* pArchive, const char* inputBuf, uint32_t inputBufLen, const char* filename, int copyData)
+{
+    return 0;
+}
+
+SJEJHHUTIL_API int sjejhh_pack_remove_file(sjejhh_pack_context* pArchive, const wchar_t* filenameOrPath)
+{
+    return 0;
+}
+
+SJEJHHUTIL_API int sjejhh_pack_enum_files(sjejhh_pack_context* pArchive, sjejhh_pack_enum_file_callback enumCallback, void* userdata)
+{
+    return 0;
+}
+
+SJEJHHUTIL_API int sjejhh_pack_do_pack(sjejhh_pack_context* pArchive)
+{
+    return 0;
+}
+
+SJEJHHUTIL_API int sjejhh_pack_close(sjejhh_pack_context* pArchive)
 {
     delete pArchive;
     return 0;
