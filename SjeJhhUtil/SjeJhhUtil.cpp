@@ -381,7 +381,7 @@ struct sjejhh_unpack_context
 
 public:
     int GetGlobalInfo(sjejhh_unpack_global_info* pGlobalInfo);
-    int GetCurrentFileInfo(sjejhh_unpack_current_file_info* pCurrentFileInfo);
+    int GetCurrentFileInfo(sjejhh_unpack_file_info* pCurrentFileInfo);
     int ReadCurrentFileData(char* readBuf, size_t bufLength, size_t* bytesRead, size_t* bytesRemaining);
 
     int SeekToBegin();
@@ -418,7 +418,7 @@ int sjejhh_unpack_context::GetGlobalInfo(sjejhh_unpack_global_info* pGlobalInfo)
     return 0;
 }
 
-int sjejhh_unpack_context::GetCurrentFileInfo(sjejhh_unpack_current_file_info* pCurrentFileInfo)
+int sjejhh_unpack_context::GetCurrentFileInfo(sjejhh_unpack_file_info* pCurrentFileInfo)
 {
     if (currentIndex < fileIndexData.fileIndexes.size())
     {
@@ -695,7 +695,7 @@ SJEJHHUTIL_API int sjejhh_unpack_get_global_info(sjejhh_unpack_context* pArchive
     return pArchive->GetGlobalInfo(pGlobalInfo);
 }
 
-SJEJHHUTIL_API int sjejhh_unpack_get_current_file_info(sjejhh_unpack_context* pArchive, sjejhh_unpack_current_file_info* pCurrentFileInfo)
+SJEJHHUTIL_API int sjejhh_unpack_get_current_file_info(sjejhh_unpack_context* pArchive, sjejhh_unpack_file_info* pCurrentFileInfo)
 {
     return pArchive->GetCurrentFileInfo(pCurrentFileInfo);
 }
