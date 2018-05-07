@@ -97,7 +97,7 @@ static void testUnpackSJEJHHArchive(const wchar_t* filePath)
 
     for (size_t i = 0; i < gi.fileCount; i++)
     {
-        sjejhh_unpack_current_file_info curFileInfo = { 0 };
+        sjejhh_unpack_file_info curFileInfo = { 0 };
         sjejhh_unpack_get_current_file_info(pArchive, &curFileInfo);
 
         filesystem::path extractFileName = extractDir;
