@@ -27,59 +27,6 @@ const char testData[] =
 "COLORKEY = 255 0 255 255\r\n\r\n";
 
 
-
-bool CreateDirectoryWithSubdir(const std::wstring& dir)
-{
-    wchar_t separator = filesystem::path::preferred_separator;
-
-    std::wstring tempDir(dir);
-
-    auto AddDirSeparator = [](std::wstring& dirString) -> std::wstring
-    {
-        if (dirString.empty())
-            return L"";
-        if (dirString[dirString.length() - 1] != filesystem::path::preferred_separator)
-            dirString.push_back(filesystem::path::preferred_separator);
-        return dirString;
-    };
-    AddDirSeparator(tempDir);
-
-    std::vector<std::wstring> dirs;		
-    std::wstring temp;	
-    std::wstring baseDir = tempDir;
-    for (int i = 0; i < baseDir.length(); i++) {
-        if (baseDir[i] != separator) {
-            temp += tempDir[i];
-        }
-        else
-        {
-            dirs.push_back(temp);
-            temp += separator;
-        }
-    }
-
-    for (std::vector<std::wstring>::const_iterator iter = dirs.begin(); iter != dirs.end(); ++iter)
-    {
-        if ((*iter).empty()) {
-            continue;
-        }
-        if (!filesystem::exists(*iter))
-        {
-            try
-            {
-                filesystem::create_directory(*iter);
-            }
-            catch (const filesystem::filesystem_error& e)
-            {
-                e.code();
-                return false;
-            }
-        }
-    }
-
-    return true;
-}
-
 static void testUnpackSJEJHHArchive(const wchar_t* filePath)
 {
     filesystem::path archivePath = filePath;
@@ -93,15 +40,15 @@ static void testUnpackSJEJHHArchive(const wchar_t* filePath)
     filesystem::path extractDir = archivePath.parent_path();
     extractDir /= std::string(gi.internalFolderName, gi.internalFolderNameLength);
 
-    CreateDirectoryWithSubdir(extractDir);
+    filesystem::create_directories(extractDir);
 
     for (size_t i = 0; i < gi.fileCount; i++)
     {
-        sjejhh_unpack_current_file_info curFileInfo = { 0 };
+        sjejhh_unpack_file_info curFileInfo = { 0 };
         sjejhh_unpack_get_current_file_info(pArchive, &curFileInfo);
 
         filesystem::path extractFileName = extractDir;
-        extractFileName /= std::string(curFileInfo.filename, curFileInfo.filenameLength);
+        extractFileName /= std::wstring(curFileInfo.filename, curFileInfo.filenameLength);
         FILE* fp = _wfopen(extractFileName.c_str(), L"wb");
 
         const size_t bufSize = 1000;
@@ -138,7 +85,25 @@ static void testUnpackSJEJHHArchive(const wchar_t* filePath)
 
 static void testPackSJEJHHArchive(const char* internalFolderName, const wchar_t* saveFilename)
 {
+    filesystem::path savePath = saveFilename;
+    filesystem::path extractPath = savePath.parent_path() / internalFolderName;
 
+    std::error_code code;
+
+    filesystem::directory_iterator dirIter(extractPath, code);
+
+    sjejhh_pack_context* pPackContext = sjejhh_pack_create_file(internalFolderName, saveFilename);
+
+    while (dirIter != filesystem::end(dirIter))
+    {
+        std::wstring file = dirIter->path();
+        sjejhh_pack_add_file(pPackContext, file.c_str());
+        dirIter++;
+    }
+
+    sjejhh_pack_do_pack(pPackContext);
+
+    sjejhh_pack_close(pPackContext);
 }
 
 int main(int argc, char** argv)
@@ -162,6 +127,8 @@ int main(int argc, char** argv)
     testUnpackSJEJHHArchive(L"testdata/SJE.JHH-skin-multi-default");
 
     // test packing "SJE.JHH" archives
+    testPackSJEJHHArchive("config", L"testdata/SJE.JHH-config-repacked");
+    testPackSJEJHHArchive("ui", L"testdata/SJE.JHH-ui-repacked");
     return 0;
 }
 
