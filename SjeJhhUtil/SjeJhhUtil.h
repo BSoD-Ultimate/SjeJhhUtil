@@ -175,11 +175,11 @@ extern "C" {
     {
         size_t currentIndex;
 
-        const char* filename;
+        const wchar_t* filename;
         size_t filenameLength;
 
-        size_t fileOffset;
-        size_t fileLength;
+        uint32_t fileOffset;
+        uint32_t fileLength;
         int isEncrypted;
     }sjejhh_unpack_file_info;
 
@@ -248,7 +248,7 @@ extern "C" {
      * bytesRemaining: Receives how many bytes remain before the whole subfile content is read.
      *
      * By using this function, subfile contents are read in stream-format, which means when calling
-     * this method in a loop, the function returns the contents after the previous call has read 
+     * this method repeatingly, the function returns the contents after the previous call has read 
      * until whole contents of the subfile have been read (In other words, reading operation reaches EOF).
      * 
      * When reading the contents failed, the function returns SJEJHH_UNPACK_ERRNO.
@@ -375,11 +375,21 @@ extern "C" {
 
     typedef enum _sjejhh_pack_error_code
     {
+        SJEJHH_PACK_OK = 0,
+        SJEJHH_PACK_ERRNO,
+        SJEJHH_PACK_NO_SUCH_FILE,
 
     }sjejhh_pack_error_code;
 
     typedef struct _sjejhh_pack_global_info
     {
+        const char* internalFolderName;
+        size_t internalFolderNameLength;
+
+        const wchar_t* fileSavePath;
+        size_t savePathLength;
+
+        size_t fileCount;
 
     }sjejhh_pack_global_info;
 
@@ -392,14 +402,25 @@ extern "C" {
 
     typedef struct _sjejhh_pack_file_info
     {
+        sjejhh_pack_file_type fileType;
+
+        const wchar_t* filename;
+        size_t filenameLength;
+
+        const void* fileData;
 
     }sjejhh_pack_file_info;
 
-    typedef int(*sjejhh_pack_enum_file_callback)(sjejhh_pack_context*, sjejhh_pack_file_info, void*);
+    typedef int(*sjejhh_pack_enum_file_callback)(sjejhh_pack_context*, sjejhh_pack_file_info*, void*);
 
     SJEJHHUTIL_API sjejhh_pack_context* sjejhh_pack_create_file(
         const char* internalFolderName,
         const wchar_t* filePath
+    );
+
+    SJEJHHUTIL_API int sjejhh_pack_get_global_info(
+        sjejhh_pack_context* pArchive,
+        sjejhh_pack_global_info* globalInfo
     );
 
     SJEJHHUTIL_API int sjejhh_pack_add_file(
@@ -411,7 +432,7 @@ extern "C" {
         sjejhh_pack_context* pArchive,
         const char* inputBuf,
         uint32_t inputBufLen,
-        const char* filename,
+        const wchar_t* filename,
         int doCopyData
     );
 
@@ -425,8 +446,6 @@ extern "C" {
         sjejhh_pack_enum_file_callback enumCallback,
         void* userdata
     );
-
-    SJEJHHUTIL_API int sjejhh_pack_close(sjejhh_pack_context* pArchive);
 
     SJEJHHUTIL_API int sjejhh_pack_do_pack(sjejhh_pack_context* pArchive);
 

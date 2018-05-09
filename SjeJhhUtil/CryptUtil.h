@@ -38,7 +38,7 @@ namespace SjeJhhUtil
         void reset(HCRYPTKEY cryptKey = NULL);
 
         HCRYPTKEY release();
-
+        
         HCRYPTKEY* operator&();
 
     private:

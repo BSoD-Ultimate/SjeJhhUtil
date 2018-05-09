@@ -7,6 +7,7 @@
 #include "CryptUtil.h"
 
 #include <sstream>
+#include <unordered_map>
 
 using namespace SjeJhhUtil;
 
@@ -113,20 +114,12 @@ static std::unique_ptr<CCryptKey> GenerateCryptKeyFromImportedData(CCryptContext
     return importedKey;
 }
 
-static int DoEncryptMemoryStream(const char* data, size_t inputLength, char* out, size_t outLength, const char* keyData, uint32_t keyLength, bool bEndOfData = true)
+static int DoEncryptMemoryStream(const char* data, size_t inputLength, char* out, size_t outLength, CCryptContext& context, CCryptKey& cryptKey, bool bEndOfData = true)
 {
-    std::unique_ptr<char[]> keyBuf(new char[keyLength]());
-    memcpy_s(keyBuf.get(), keyLength, keyData, keyLength);
-    uint32_t keyBufLen = keyLength;
-
-    CCryptContext cryptContext;
-
-    std::unique_ptr<CCryptKey> keyHandle = GenerateCryptKeyFromHash(cryptContext, keyBuf.get(), keyBufLen);
-
     size_t encryptedDataLen = inputLength;
 
     // calculate encrypted data length
-    if (!CryptEncrypt(keyHandle->get(), 0, bEndOfData ? TRUE : FALSE, 0, 0, (DWORD*)&encryptedDataLen, 0))
+    if (!CryptEncrypt(cryptKey.get(), 0, bEndOfData ? TRUE : FALSE, 0, 0, (DWORD*)&encryptedDataLen, 0))
     {
         int error = GetLastError();
         return -1;
@@ -139,7 +132,7 @@ static int DoEncryptMemoryStream(const char* data, size_t inputLength, char* out
 
     memcpy_s(out, outLength, data, inputLength);
 
-    if (!CryptEncrypt(keyHandle->get(), 0, bEndOfData ? TRUE : FALSE, 0, (BYTE*)out, (DWORD*)&encryptedDataLen, outLength))
+    if (!CryptEncrypt(cryptKey.get(), 0, bEndOfData ? TRUE : FALSE, 0, (BYTE*)out, (DWORD*)&encryptedDataLen, outLength))
     {
         int error = GetLastError();
         return -1;
@@ -149,9 +142,9 @@ static int DoEncryptMemoryStream(const char* data, size_t inputLength, char* out
 }
 
 // RC4 algorithm, encrypt = decrypt
-static int DoDecryptMemoryStream(const char* data, size_t inputLength, char* out, size_t outLength, const char* keyData, uint32_t keyLength, bool bEndOfData = true)
+static int DoDecryptMemoryStream(const char* data, size_t inputLength, char* out, size_t outLength, CCryptContext& context, CCryptKey& cryptKey, bool bEndOfData = true)
 {
-    return DoEncryptMemoryStream(data, inputLength, out, outLength, keyData, keyLength, bEndOfData);
+    return DoEncryptMemoryStream(data, inputLength, out, outLength, context, cryptKey, bEndOfData);
 }
 
 SJEJHHUTIL_API int sjejhh_encrypt_data(const char* data, size_t inputLength, char* out, size_t outLength, const char* keyData, uint32_t keyLength)
@@ -163,7 +156,15 @@ SJEJHHUTIL_API int sjejhh_encrypt_data(const char* data, size_t inputLength, cha
         return -1;
     }
 
-    return DoEncryptMemoryStream(data, inputLength, out, outLength, keyData, keyLength);
+    std::unique_ptr<char[]> keyBuf(new char[keyLength]());
+    memcpy_s(keyBuf.get(), keyLength, keyData, keyLength);
+    uint32_t keyBufLen = keyLength;
+
+    CCryptContext cryptContext;
+
+    std::unique_ptr<CCryptKey> keyHandle = GenerateCryptKeyFromHash(cryptContext, keyBuf.get(), keyBufLen);
+
+    return DoEncryptMemoryStream(data, inputLength, out, outLength, cryptContext, *keyHandle);
 }
 
 SJEJHHUTIL_API int sjejhh_encrypt_file(const wchar_t* input_filePath, const wchar_t* output_filePath, const char* keyData, uint32_t keyLength)
@@ -337,15 +338,18 @@ struct FileInfoBlob
 
 struct SJEJHHFileInfo
 {
-    std::string filename;
-    size_t fileOffset;
-    size_t fileLength;
+    filesystem::path filename;
+    uint32_t fileOffset;
+    uint32_t fileLength;
     bool isEncrypted;
 
     SJEJHHFileInfo()
         : fileOffset(0)
         , fileLength(0)
         , isEncrypted(false)
+    {
+    }
+    virtual ~SJEJHHFileInfo()
     {
     }
 };
@@ -427,7 +431,7 @@ int sjejhh_unpack_context::GetCurrentFileInfo(sjejhh_unpack_file_info* pCurrentF
         auto currentIndexData = fileIndexData.fileIndexes[currentIndex];
 
         pCurrentFileInfo->filename = currentIndexData->filename.c_str();
-        pCurrentFileInfo->filenameLength = currentIndexData->filename.length();
+        pCurrentFileInfo->filenameLength = currentIndexData->filename.wstring().length();
 
         pCurrentFileInfo->fileOffset = currentIndexData->fileOffset;
         pCurrentFileInfo->fileLength = currentIndexData->fileLength;
@@ -615,8 +619,8 @@ int sjejhh_unpack_context::DecryptEncryptedData(const char* inBuf, size_t inBufL
 
 void sjejhh_unpack_context::ParseSJEJHHFileIndexInfo()
 {
-    int32_t indexFileOffset = 0;
-    int32_t indexFileLength = 0;
+    uint32_t indexFileOffset = 0;
+    uint32_t indexFileLength = 0;
     if (!(fread(&indexFileOffset, 1, sizeof(indexFileOffset), fileHandle.Get()) == sizeof(indexFileOffset) && 
         fread(&indexFileLength, 1, sizeof(indexFileLength), fileHandle.Get()) == sizeof(indexFileLength)))
     {
@@ -657,7 +661,8 @@ void sjejhh_unpack_context::ParseSJEJHHFileIndexInfo()
 
         // file name
         StringBlob* filenameData = (StringBlob*)indexDataReader;
-        pFileInfo->filename.assign(filenameData->stringData, filenameData->header.stringDataLength - 1);
+        std::string filename(filenameData->stringData, filenameData->header.stringDataLength - 1);
+        pFileInfo->filename = filename;
         indexDataReader += sizeof(StringBlobHeader) + filenameData->header.stringDataLength;
 
         // file offset 
@@ -671,7 +676,7 @@ void sjejhh_unpack_context::ParseSJEJHHFileIndexInfo()
         pFileInfo->fileLength = fileLength;
 
         // encrypted?
-        pFileInfo->isEncrypted = IsFileNeedToBeEncrypted(fileIndexData.internalFolderIdentifier, pFileInfo->filename);
+        pFileInfo->isEncrypted = IsFileNeedToBeEncrypted(fileIndexData.internalFolderIdentifier, pFileInfo->filename.string());
 
         this->fileIndexData.fileIndexes.emplace_back(pFileInfo);
     }
@@ -743,17 +748,387 @@ SJEJHHUTIL_API int sjejhh_unpack_close(sjejhh_unpack_context* pArchive)
 * *********************************************************************************
 */
 
+struct SJEJHHPackFileInfo
+    : public SJEJHHFileInfo
+{
+    sjejhh_pack_file_type fileType;
+
+    // memory data
+    std::unique_ptr<char[]> copiedMemoryData;
+    const char* observedMemoryData;
+    uint32_t memoryDataLength;
+
+    // file data
+    std::unique_ptr<util::FileHandle> fileHandleData;
+
+    SJEJHHPackFileInfo()
+        : fileType(SJEJHH_PACK_FILETYPE_UNKNOWN)
+        , observedMemoryData(NULL)
+        , memoryDataLength(0)
+    {
+    }
+};
+
+// index data
+struct SJEJHHPackIndexData
+{
+    std::string internalFolderIdentifier;
+    std::unordered_map<std::wstring, std::shared_ptr<SJEJHHPackFileInfo>> fileIndexes;
+};
+
 struct sjejhh_pack_context
 {
+public:
+    filesystem::path saveFilePath;
 
+    SJEJHHPackIndexData fileIndexData;
+
+    sjejhh_pack_context(const char* internalFolderName, const wchar_t* filePath)
+        : saveFilePath(filePath)
+    {
+        fileIndexData.internalFolderIdentifier = internalFolderName;
+    }
+
+public:
+    int GetGlobalInfo(sjejhh_pack_global_info* pGlobalInfo);
+    int AddFile(const wchar_t* filePath);
+    int AddMemoryData(const char* buf, uint32_t bufLength, const wchar_t* filename, bool doCopyData);
+    int RemoveFile(const wchar_t* filenameOrPath);
+    int EnumFiles(sjejhh_pack_enum_file_callback enumCallback, void* userdata);
+
+    int DoPack();
+
+private:
+    std::string CreateIndexData();
 };
+
+
+int sjejhh_pack_context::GetGlobalInfo(sjejhh_pack_global_info* pGlobalInfo)
+{
+    pGlobalInfo->fileSavePath = saveFilePath.c_str();
+    pGlobalInfo->savePathLength = saveFilePath.string().length();
+
+    pGlobalInfo->internalFolderName = fileIndexData.internalFolderIdentifier.c_str();
+    pGlobalInfo->internalFolderNameLength = fileIndexData.internalFolderIdentifier.length();
+
+    pGlobalInfo->fileCount = fileIndexData.fileIndexes.size();
+
+    return 0;
+}
+
+int sjejhh_pack_context::AddFile(const wchar_t* filePathString)
+{
+    try
+    {
+        std::unique_ptr<util::FileHandle> pFileHandle(new util::FileHandle(filePathString, L"rb"));
+
+        auto pFileData = std::make_shared<SJEJHHPackFileInfo>();
+
+        filesystem::path filePath = filePathString;
+
+        pFileData->filename = filePath.filename().string();
+        pFileData->fileType = SJEJHH_PACK_FILETYPE_FILEPATH;
+        pFileData->isEncrypted = IsFileNeedToBeEncrypted(fileIndexData.internalFolderIdentifier, pFileData->filename.string());
+        pFileData->fileHandleData = std::move(pFileHandle);
+
+        fileIndexData.fileIndexes[pFileData->filename] = pFileData;
+    }
+    catch (const std::runtime_error&)
+    {
+        return SJEJHH_PACK_ERRNO;
+    }
+    return 0;
+}
+
+int sjejhh_pack_context::AddMemoryData(const char* buf, uint32_t bufLength, const wchar_t* filename, bool doCopyData)
+{
+    auto pFileData = std::make_shared<SJEJHHPackFileInfo>();
+
+    pFileData->filename = filename;
+    pFileData->fileType = SJEJHH_PACK_FILETYPE_MEMORYDATA;
+    pFileData->isEncrypted = IsFileNeedToBeEncrypted(fileIndexData.internalFolderIdentifier, pFileData->filename.string());
+    pFileData->memoryDataLength = bufLength;
+
+    if (doCopyData)
+    {
+        pFileData->copiedMemoryData.reset(new char[bufLength]);
+        memcpy_s(pFileData->copiedMemoryData.get(), bufLength, buf, bufLength);
+    }
+    else
+    {
+        pFileData->observedMemoryData = buf;
+    }
+
+    fileIndexData.fileIndexes[pFileData->filename] = pFileData;
+    return 0;
+}
+
+int sjejhh_pack_context::RemoveFile(const wchar_t* filenameOrPath)
+{
+    return fileIndexData.fileIndexes.erase(filenameOrPath) > 0 ? 0 : SJEJHH_PACK_NO_SUCH_FILE;
+}
+
+int sjejhh_pack_context::EnumFiles(sjejhh_pack_enum_file_callback enumCallback, void * userdata)
+{
+    for (auto iter = fileIndexData.fileIndexes.cbegin(); iter != fileIndexData.fileIndexes.cend(); iter++)
+    {
+        sjejhh_pack_file_info info = {};
+
+        info.fileType = iter->second->fileType;
+        info.filename = iter->second->filename.c_str();
+        info.filenameLength = iter->second->filename.string().length();
+
+        switch (info.fileType)
+        {
+        case SJEJHH_PACK_FILETYPE_FILEPATH:
+            info.fileData = iter->second->fileHandleData->Get();
+            break;
+        case SJEJHH_PACK_FILETYPE_MEMORYDATA:
+        {
+            bool isCopied = iter->second->copiedMemoryData != NULL;
+            if (isCopied)
+            {
+                info.fileData = iter->second->copiedMemoryData.get();
+            }
+            else
+            {
+                info.fileData = iter->second->observedMemoryData;
+            }
+        }
+            break;
+        default:
+            info.fileData = NULL;
+            break;
+        }
+
+        enumCallback(this, &info, userdata);
+    }
+    return 0;
+}
+
+int sjejhh_pack_context::DoPack()
+{
+    try
+    {
+        util::FileHandle pArchive(saveFilePath, L"wb");
+
+        // placeholder for index data offset & length
+        int32_t placeholder[2] = { 0 };
+        fwrite(placeholder, sizeof(int32_t), 2, pArchive.Get());
+
+        // write file data
+        auto WriteDataFromFileHandle = [&pArchive](std::shared_ptr<SJEJHHPackFileInfo> pFileInfo)
+        {
+            if (!pFileInfo->isEncrypted)
+            {
+                static const size_t bufLen = 1000;
+                std::unique_ptr<char[]> buf(new char[bufLen]);
+
+                uint32_t fileLength = 0;
+
+                while (true)
+                {
+                    size_t bytesRead = fread(buf.get(), 1, bufLen, pFileInfo->fileHandleData->Get());
+                    if (bytesRead == 0)
+                    {
+                        break;
+                    }
+
+                    fileLength += bytesRead;
+
+                    if (fwrite(buf.get(), 1, bytesRead, pArchive.Get()) < bytesRead)
+                    {
+                        throw std::runtime_error("Error writing file data to the archive");
+                    }
+                }
+
+
+                pFileInfo->fileLength = fileLength;
+            }
+            else
+            {
+                static const size_t bufLen = 1000;
+                std::unique_ptr<char[]> fileDataBuf(new char[bufLen]);
+
+                uint32_t fileLength = 0;
+
+                CCryptContext cryptContext;
+                
+                std::unique_ptr<CCryptKey> cryptKey = GenerateCryptKeyFromHash(cryptContext, encryptedFileCryptKey.c_str(), encryptedFileCryptKey.length());
+                if (!cryptKey)
+                {
+                    throw std::runtime_error("Error generating crypt Key!");
+                }
+
+                while (true)
+                {
+                    size_t bytesRead = fread(fileDataBuf.get(), 1, bufLen, pFileInfo->fileHandleData->Get());
+                    if (bytesRead == 0)
+                    {
+                        break;
+                    }
+
+                    std::unique_ptr<char[]> encryptedBuf;
+
+                    // encrypt the data
+                    size_t encryptedBufLen = DoEncryptMemoryStream(fileDataBuf.get(), bytesRead, NULL, 0, cryptContext, *cryptKey, false);
+                    encryptedBuf.reset(new char[encryptedBufLen]);
+                    DoEncryptMemoryStream(fileDataBuf.get(), bytesRead, encryptedBuf.get(), encryptedBufLen, cryptContext, *cryptKey, false);
+
+                    fileLength += encryptedBufLen;
+
+                    if (fwrite(encryptedBuf.get(), 1, encryptedBufLen, pArchive.Get()) < encryptedBufLen)
+                    {
+                        throw std::runtime_error("Error writing file data to the archive");
+                    }
+                }
+
+                pFileInfo->fileLength = fileLength;
+            }
+        };
+
+        auto WriteDataFromMemory = [&pArchive](std::shared_ptr<SJEJHHPackFileInfo> pFileInfo)
+        {
+            bool isCopied = pFileInfo->copiedMemoryData == nullptr;
+            const char* bufData = isCopied ? pFileInfo->copiedMemoryData.get() : pFileInfo->observedMemoryData;
+
+            if (!pFileInfo->isEncrypted)
+            {
+                if (fwrite(bufData, 1, pFileInfo->memoryDataLength, pArchive.Get()) < pFileInfo->memoryDataLength)
+                {
+                    throw std::runtime_error("Error writing file data to the archive");
+                }
+                pFileInfo->fileLength = pFileInfo->memoryDataLength;
+            }
+            else
+            {
+                int encryptedLength = sjejhh_encrypt_data(bufData, pFileInfo->memoryDataLength, NULL, 0, encryptedFileCryptKey.c_str(), encryptedFileCryptKey.length());
+                std::unique_ptr<char[]> encryptedData(new char[encryptedLength]);
+                sjejhh_encrypt_data(bufData, pFileInfo->memoryDataLength, encryptedData.get(), encryptedLength, encryptedFileCryptKey.c_str(), encryptedFileCryptKey.length());
+
+                if (fwrite(encryptedData.get(), 1, encryptedLength, pArchive.Get()) < encryptedLength)
+                {
+                    throw std::runtime_error("Error writing file data to archive");
+                }
+                pFileInfo->fileLength = encryptedLength;
+            }
+
+        };
+
+        // write file data sequentially
+        for (auto iter = fileIndexData.fileIndexes.cbegin(); iter != fileIndexData.fileIndexes.cend(); iter++)
+        {
+            auto pFileData = iter->second;
+            assert(pFileData);
+
+            pFileData->fileOffset = ftell(pArchive.Get());
+
+            switch (pFileData->fileType)
+            {
+            case SJEJHH_PACK_FILETYPE_FILEPATH:
+                WriteDataFromFileHandle(pFileData);
+                break;
+            case SJEJHH_PACK_FILETYPE_MEMORYDATA:
+                WriteDataFromMemory(pFileData);
+                break;
+            default:
+            {
+                assert(false);
+                break;
+            }
+
+            }
+        }
+
+        fflush(pArchive.Get());
+
+        uint32_t indexDataOffset = ftell(pArchive.Get());
+
+        std::string indexData = CreateIndexData();
+
+        std::unique_ptr<char[]> encryptedIndexData;
+
+        uint32_t encryptedLength = sjejhh_encrypt_data(indexData.c_str(), indexData.length(), NULL, 0, indexCryptKey.c_str(), indexCryptKey.length());
+        encryptedIndexData.reset(new char[encryptedLength]);
+        sjejhh_encrypt_data(indexData.c_str(), indexData.length(), encryptedIndexData.get(), encryptedLength, indexCryptKey.c_str(), indexCryptKey.length());
+        // write index data
+
+        if (fwrite(encryptedIndexData.get(), 1, encryptedLength, pArchive.Get()) < encryptedLength)
+        {
+            throw std::runtime_error("Error writing index data to archive");
+        }
+
+        // write index data offset & length
+        fseek(pArchive.Get(), 0, SEEK_SET);
+        fwrite(&indexDataOffset, 1, sizeof(uint32_t), pArchive.Get());
+        fwrite(&encryptedLength, 1, sizeof(uint32_t), pArchive.Get());
+
+        return 0;
+    }
+    catch (const std::exception&)
+    {
+        return SJEJHH_PACK_ERRNO;
+    }
+
+}
+
+std::string sjejhh_pack_context::CreateIndexData()
+{
+    std::string indexDataString;
+
+    // file count
+    uint32_t fileCount = fileIndexData.fileIndexes.size();
+    indexDataString.append((const char*)&fileCount, sizeof(uint32_t));
+
+    // internal folder name
+    const auto& folderName = fileIndexData.internalFolderIdentifier;
+
+    size_t folderNameBufLen = sizeof(StringBlobHeader) + folderName.length() + 1;
+    std::unique_ptr<char[]> folderNameBuf(new char[folderNameBufLen]());
+    StringBlob* pBlob = reinterpret_cast<StringBlob*>(folderNameBuf.get());
+
+    pBlob->header.stringDataLength = folderName.length() + 1;
+    memcpy_s(pBlob->stringData, folderName.length() + 1, folderName.c_str(), folderName.length());
+    indexDataString.append((const char*)pBlob, folderNameBufLen);
+
+
+    // filename - offset - length list
+    for (auto iter = fileIndexData.fileIndexes.cbegin(); iter != fileIndexData.fileIndexes.cend(); iter++)
+    {
+        auto pFileData = iter->second;
+        assert(pFileData);
+
+        // filename
+        std::string filename = pFileData->filename.string();
+
+        size_t filenameBufLen = sizeof(StringBlobHeader) + filename.length() + 1;
+        std::unique_ptr<char[]> filenameBuf(new char[filenameBufLen]());
+        StringBlob* pBlob = reinterpret_cast<StringBlob*>(filenameBuf.get());
+
+        pBlob->header.stringDataLength = filename.length() + 1;
+        memcpy_s(pBlob->stringData, filename.length() + 1, filename.c_str(), filename.length());
+        indexDataString.append((const char*)pBlob, filenameBufLen);
+
+        // file Offset
+        uint32_t fileOffset = pFileData->fileOffset;
+        indexDataString.append((const char*)&fileOffset, sizeof(uint32_t));
+
+        // file Length 
+        uint32_t fileLength = pFileData->fileLength;
+        indexDataString.append((const char*)&fileLength, sizeof(uint32_t));
+    }
+
+    return indexDataString;
+}
+
+
 
 
 SJEJHHUTIL_API sjejhh_pack_context* sjejhh_pack_create_file(const char* internalFolderName, const wchar_t* filePath)
 {
     try
     {
-        std::unique_ptr<sjejhh_pack_context> pContext(new sjejhh_pack_context());
+        std::unique_ptr<sjejhh_pack_context> pContext(new sjejhh_pack_context(internalFolderName, filePath));
         return pContext.release();
     }
     catch (const std::runtime_error& e)
@@ -762,29 +1137,34 @@ SJEJHHUTIL_API sjejhh_pack_context* sjejhh_pack_create_file(const char* internal
     }
 }
 
-SJEJHHUTIL_API int sjejhh_pack_add_file(sjejhh_pack_context* pArchive, const wchar_t* filePath)
+SJEJHHUTIL_API int sjejhh_pack_get_global_info(sjejhh_pack_context* pArchive, sjejhh_pack_global_info* globalInfo)
 {
-    return 0;
+    return pArchive->GetGlobalInfo(globalInfo);
 }
 
-SJEJHHUTIL_API int sjejhh_pack_add_memory_data(sjejhh_pack_context* pArchive, const char* inputBuf, uint32_t inputBufLen, const char* filename, int copyData)
+SJEJHHUTIL_API int sjejhh_pack_add_file(sjejhh_pack_context* pArchive, const wchar_t* filePath)
 {
-    return 0;
+    return pArchive->AddFile(filePath);
+}
+
+SJEJHHUTIL_API int sjejhh_pack_add_memory_data(sjejhh_pack_context* pArchive, const char* inputBuf, uint32_t inputBufLen, const wchar_t* filename, int copyData)
+{
+    return pArchive->AddMemoryData(inputBuf, inputBufLen, filename, copyData);
 }
 
 SJEJHHUTIL_API int sjejhh_pack_remove_file(sjejhh_pack_context* pArchive, const wchar_t* filenameOrPath)
 {
-    return 0;
+    return pArchive->RemoveFile(filenameOrPath);
 }
 
 SJEJHHUTIL_API int sjejhh_pack_enum_files(sjejhh_pack_context* pArchive, sjejhh_pack_enum_file_callback enumCallback, void* userdata)
 {
-    return 0;
+    return pArchive->EnumFiles(enumCallback, userdata);
 }
 
 SJEJHHUTIL_API int sjejhh_pack_do_pack(sjejhh_pack_context* pArchive)
 {
-    return 0;
+    return pArchive->DoPack();
 }
 
 SJEJHHUTIL_API int sjejhh_pack_close(sjejhh_pack_context* pArchive)
