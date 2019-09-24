@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.14.0)
 
-set(SJEJHHUTIL_BUILD_AS_DLL ON CACHE BOOL "")
+option(SJEJHHUTIL_BUILD_AS_DLL "build the library as DLL" ON)
 
 if(SJEJHHUTIL_BUILD_AS_DLL)
   set(SJEJHH_LIB_TYPE SHARED)
@@ -33,8 +33,19 @@ add_library(SjeJhhUtil ${SJEJHH_LIB_TYPE}
   ${SJEJHH_RESOURCE_FILES}
 )
 
+target_include_directories(SjeJhhUtil
+  PRIVATE
+  "${CMAKE_CURRENT_SOURCE_DIR}/include"
+  "${CMAKE_CURRENT_SOURCE_DIR}/src"
+  "${CMAKE_CURRENT_SOURCE_DIR}/resource"
+)
+
 target_compile_definitions(SjeJhhUtil
   PUBLIC
-    
-
+    $<$<BOOL:${SJEJHHUTIL_BUILD_AS_DLL}>:SJEJHHUTIL_BUILD_DLL>
+  PRIVATE 
+    UNICODE
+    _UNICODE
+    SJEJHHUTIL_EXPORTS
+    _WINDOWS
 )

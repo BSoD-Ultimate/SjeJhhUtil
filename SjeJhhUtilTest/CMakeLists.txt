@@ -12,6 +12,6 @@ target_include_directories(SjeJhhUtilTest
     "${CMAKE_CURRENT_SOURCE_DIR}/../SjeJhhUtil/include"
 )
 
-target_link_libraries(
-    SjeJhhUtil 
+target_link_libraries(SjeJhhUtilTest
+  SjeJhhUtil 
 )
