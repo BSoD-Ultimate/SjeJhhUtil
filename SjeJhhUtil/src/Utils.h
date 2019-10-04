@@ -1,8 +1,13 @@
 ﻿#pragma once
 
-#include <experimental/filesystem> 
-
+#if _MSC_VER < 1920
+#include <experimental/filesystem>
 namespace filesystem = std::experimental::filesystem;
+#else
+#include <filesystem>
+namespace filesystem = std::filesystem;
+#endif // _MSC_VER < 1920
+
 
 namespace SjeJhhUtil
 {
