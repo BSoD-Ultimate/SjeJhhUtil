@@ -778,7 +778,10 @@ public:
     int RemoveFile(const wchar_t* filenameOrPath);
     int EnumFiles(sjejhh_pack_enum_file_callback enumCallback, void* userdata);
 
-    int DoPack();
+    int DoPack(sjejhh_pack_callback pPackCallback, void* callbackData);
+
+private:
+    sjejhh_pack_file_info GetOuterPackFileInfo(const SJEJHHPackFileInfo* pFileInfo);
 
 private:
     std::string CreateIndexData();
@@ -854,41 +857,13 @@ int sjejhh_pack_context::EnumFiles(sjejhh_pack_enum_file_callback enumCallback, 
 {
     for (auto iter = fileIndexData.fileIndexes.cbegin(); iter != fileIndexData.fileIndexes.cend(); iter++)
     {
-        sjejhh_pack_file_info info = {};
-
-        info.fileType = iter->second->fileType;
-        info.filename = iter->second->filename.c_str();
-        info.filenameLength = iter->second->filename.string().length();
-
-        switch (info.fileType)
-        {
-        case SJEJHH_PACK_FILETYPE_FILEPATH:
-            info.fileData = iter->second->fileHandleData->Get();
-            break;
-        case SJEJHH_PACK_FILETYPE_MEMORYDATA:
-        {
-            bool isCopied = iter->second->copiedMemoryData != NULL;
-            if (isCopied)
-            {
-                info.fileData = iter->second->copiedMemoryData.get();
-            }
-            else
-            {
-                info.fileData = iter->second->observedMemoryData;
-            }
-        }
-            break;
-        default:
-            info.fileData = NULL;
-            break;
-        }
-
+        sjejhh_pack_file_info info = GetOuterPackFileInfo(iter->second.get());
         enumCallback(this, &info, userdata);
     }
     return 0;
 }
 
-int sjejhh_pack_context::DoPack()
+int sjejhh_pack_context::DoPack(sjejhh_pack_callback pPackCallback, void* callbackData)
 {
     try
     {
@@ -998,12 +973,19 @@ int sjejhh_pack_context::DoPack()
         };
 
         // write file data sequentially
-        for (auto iter = fileIndexData.fileIndexes.cbegin(); iter != fileIndexData.fileIndexes.cend(); iter++)
+        int fileIndex = 0;
+        for (auto iter = fileIndexData.fileIndexes.cbegin(); iter != fileIndexData.fileIndexes.cend(); iter++, fileIndex++)
         {
             auto pFileData = iter->second;
             assert(pFileData);
 
             pFileData->fileOffset = ftell(pArchive.Get());
+
+            auto outerFileInfo = GetOuterPackFileInfo(iter->second.get());
+            if (pPackCallback)
+            {
+                pPackCallback(&outerFileInfo, fileIndex, fileIndexData.fileIndexes.size(), callbackData);
+            }
 
             switch (pFileData->fileType)
             {
@@ -1052,6 +1034,40 @@ int sjejhh_pack_context::DoPack()
         return SJEJHH_PACK_ERRNO;
     }
 
+}
+
+sjejhh_pack_file_info sjejhh_pack_context::GetOuterPackFileInfo(const SJEJHHPackFileInfo* pFileInfo)
+{
+    sjejhh_pack_file_info info = {};
+
+    info.fileType = pFileInfo->fileType;
+    info.filename = pFileInfo->filename.c_str();
+    info.filenameLength = pFileInfo->filename.string().length();
+
+    switch (info.fileType)
+    {
+    case SJEJHH_PACK_FILETYPE_FILEPATH:
+        info.fileData = pFileInfo->fileHandleData->Get();
+        break;
+    case SJEJHH_PACK_FILETYPE_MEMORYDATA:
+    {
+        bool isCopied = pFileInfo->copiedMemoryData != NULL;
+        if (isCopied)
+        {
+            info.fileData = pFileInfo->copiedMemoryData.get();
+        }
+        else
+        {
+            info.fileData = pFileInfo->observedMemoryData;
+        }
+    }
+    break;
+    default:
+        info.fileData = NULL;
+        break;
+    }
+
+    return info;
 }
 
 std::string sjejhh_pack_context::CreateIndexData()
@@ -1144,9 +1160,9 @@ SJEJHHUTIL_API int sjejhh_pack_enum_files(sjejhh_pack_context* pArchive, sjejhh_
     return pArchive->EnumFiles(enumCallback, userdata);
 }
 
-SJEJHHUTIL_API int sjejhh_pack_do_pack(sjejhh_pack_context* pArchive)
+SJEJHHUTIL_API int sjejhh_pack_do_pack(sjejhh_pack_context* pArchive, sjejhh_pack_callback pPackCallback, void* callbackData)
 {
-    return pArchive->DoPack();
+    return pArchive->DoPack(pPackCallback, callbackData);
 }
 
 SJEJHHUTIL_API int sjejhh_pack_close(sjejhh_pack_context* pArchive)

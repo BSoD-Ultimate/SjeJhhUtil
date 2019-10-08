@@ -411,7 +411,7 @@ extern "C" {
 
     }sjejhh_pack_file_info;
 
-    typedef int(*sjejhh_pack_enum_file_callback)(sjejhh_pack_context*, sjejhh_pack_file_info*, void*);
+    typedef int(*sjejhh_pack_enum_file_callback)(sjejhh_pack_context* context, sjejhh_pack_file_info* info, void* userdata);
 
     SJEJHHUTIL_API sjejhh_pack_context* sjejhh_pack_create_file(
         const char* internalFolderName,
@@ -447,7 +447,9 @@ extern "C" {
         void* userdata
     );
 
-    SJEJHHUTIL_API int sjejhh_pack_do_pack(sjejhh_pack_context* pArchive);
+    typedef int(*sjejhh_pack_callback)(sjejhh_pack_file_info* pFileInfo, size_t curIndex, size_t totalCount, void* userdata);
+
+    SJEJHHUTIL_API int sjejhh_pack_do_pack(sjejhh_pack_context* pArchive, sjejhh_pack_callback pPackCallback, void* callbackData);
 
     SJEJHHUTIL_API int sjejhh_pack_close(sjejhh_pack_context* pArchive);
 
