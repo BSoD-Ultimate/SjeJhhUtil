@@ -145,7 +145,6 @@ extern "C" {
         SJEJHH_UNPACK_EOF,
         SJEJHH_UNPACK_INVALIDARG,
         SJEJHH_UNPACK_INTERNALERROR,
-
     }sjejhh_unpack_error_code;
 
     typedef struct sjejhh_unpack_context sjejhh_unpack_context;
@@ -378,6 +377,7 @@ extern "C" {
         SJEJHH_PACK_OK = 0,
         SJEJHH_PACK_ERRNO,
         SJEJHH_PACK_NO_SUCH_FILE,
+        SJEJHH_PACK_ABORTED_BY_CALLBACK
 
     }sjejhh_pack_error_code;
 

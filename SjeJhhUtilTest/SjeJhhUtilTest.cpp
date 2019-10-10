@@ -9,6 +9,7 @@
 
 #include "SjeJhhUtil.h"
 
+#define  _SILENCE_EXPERIMENTAL_FILESYSTEM_DEPRECATION_WARNING
 #include <experimental/filesystem>
 
 namespace filesystem = std::experimental::filesystem;
@@ -101,7 +102,7 @@ static void testPackSJEJHHArchive(const char* internalFolderName, const wchar_t*
         dirIter++;
     }
 
-    sjejhh_pack_do_pack(pPackContext);
+    sjejhh_pack_do_pack(pPackContext, nullptr, nullptr);
 
     sjejhh_pack_close(pPackContext);
 }

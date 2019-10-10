@@ -984,7 +984,11 @@ int sjejhh_pack_context::DoPack(sjejhh_pack_callback pPackCallback, void* callba
             auto outerFileInfo = GetOuterPackFileInfo(iter->second.get());
             if (pPackCallback)
             {
-                pPackCallback(&outerFileInfo, fileIndex, fileIndexData.fileIndexes.size(), callbackData);
+                int ret = pPackCallback(&outerFileInfo, fileIndex, fileIndexData.fileIndexes.size(), callbackData);
+                if (!ret)
+                {
+                    return SJEJHH_PACK_ABORTED_BY_CALLBACK;
+                }
             }
 
             switch (pFileData->fileType)
