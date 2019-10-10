@@ -809,6 +809,7 @@ int sjejhh_pack_context::AddFile(const wchar_t* filePathString)
 
         filesystem::path filePath = filePathString;
 
+        pFileData->filePath = filePath;
         pFileData->filename = filePath.filename().string();
         pFileData->isEncrypted = IsFileNeedToBeEncrypted(fileIndexData.internalFolderIdentifier, pFileData->filename.string());
 
