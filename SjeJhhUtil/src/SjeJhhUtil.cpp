@@ -733,18 +733,18 @@ SJEJHHUTIL_API int sjejhh_unpack_close(sjejhh_unpack_context* pArchive)
 struct SJEJHHPackFileInfo
     : public SJEJHHFileInfo
 {
-    sjejhh_pack_file_type fileType;
+    const sjejhh_pack_file_type fileType;
+
+    // file data
+    filesystem::path filePath;
 
     // memory data
     std::unique_ptr<char[]> copiedMemoryData;
     const char* observedMemoryData;
     uint32_t memoryDataLength;
 
-    // file data
-    std::unique_ptr<util::FileHandle> fileHandleData;
-
-    SJEJHHPackFileInfo()
-        : fileType(SJEJHH_PACK_FILETYPE_UNKNOWN)
+    SJEJHHPackFileInfo(sjejhh_pack_file_type fileType)
+        : fileType(fileType)
         , observedMemoryData(NULL)
         , memoryDataLength(0)
     {
@@ -805,16 +805,12 @@ int sjejhh_pack_context::AddFile(const wchar_t* filePathString)
 {
     try
     {
-        std::unique_ptr<util::FileHandle> pFileHandle(new util::FileHandle(filePathString, L"rb"));
-
-        auto pFileData = std::make_shared<SJEJHHPackFileInfo>();
+        auto pFileData = std::make_shared<SJEJHHPackFileInfo>(SJEJHH_PACK_FILETYPE_FILEPATH);
 
         filesystem::path filePath = filePathString;
 
         pFileData->filename = filePath.filename().string();
-        pFileData->fileType = SJEJHH_PACK_FILETYPE_FILEPATH;
         pFileData->isEncrypted = IsFileNeedToBeEncrypted(fileIndexData.internalFolderIdentifier, pFileData->filename.string());
-        pFileData->fileHandleData = std::move(pFileHandle);
 
         fileIndexData.fileIndexes[pFileData->filename] = pFileData;
     }
@@ -827,10 +823,9 @@ int sjejhh_pack_context::AddFile(const wchar_t* filePathString)
 
 int sjejhh_pack_context::AddMemoryData(const char* buf, uint32_t bufLength, const wchar_t* filename, bool doCopyData)
 {
-    auto pFileData = std::make_shared<SJEJHHPackFileInfo>();
+    auto pFileData = std::make_shared<SJEJHHPackFileInfo>(SJEJHH_PACK_FILETYPE_MEMORYDATA);
 
     pFileData->filename = filename;
-    pFileData->fileType = SJEJHH_PACK_FILETYPE_MEMORYDATA;
     pFileData->isEncrypted = IsFileNeedToBeEncrypted(fileIndexData.internalFolderIdentifier, pFileData->filename.string());
     pFileData->memoryDataLength = bufLength;
 
@@ -876,6 +871,9 @@ int sjejhh_pack_context::DoPack(sjejhh_pack_callback pPackCallback, void* callba
         // write file data
         auto WriteDataFromFileHandle = [&pArchive](std::shared_ptr<SJEJHHPackFileInfo> pFileInfo)
         {
+            assert(pFileInfo->fileType == SJEJHH_PACK_FILETYPE_FILEPATH);
+            std::unique_ptr<util::FileHandle> pFileHandle(new util::FileHandle(pFileInfo->filePath, L"rb"));
+
             if (!pFileInfo->isEncrypted)
             {
                 static const size_t bufLen = 1000;
@@ -885,7 +883,7 @@ int sjejhh_pack_context::DoPack(sjejhh_pack_callback pPackCallback, void* callba
 
                 while (true)
                 {
-                    size_t bytesRead = fread(buf.get(), 1, bufLen, pFileInfo->fileHandleData->Get());
+                    size_t bytesRead = fread(buf.get(), 1, bufLen, pFileHandle->Get());
                     if (bytesRead == 0)
                     {
                         break;
@@ -919,7 +917,7 @@ int sjejhh_pack_context::DoPack(sjejhh_pack_callback pPackCallback, void* callba
 
                 while (true)
                 {
-                    size_t bytesRead = fread(fileDataBuf.get(), 1, bufLen, pFileInfo->fileHandleData->Get());
+                    size_t bytesRead = fread(fileDataBuf.get(), 1, bufLen, pFileHandle->Get());
                     if (bytesRead == 0)
                     {
                         break;
@@ -946,6 +944,7 @@ int sjejhh_pack_context::DoPack(sjejhh_pack_callback pPackCallback, void* callba
 
         auto WriteDataFromMemory = [&pArchive](std::shared_ptr<SJEJHHPackFileInfo> pFileInfo)
         {
+            assert(pFileInfo->fileType == SJEJHH_PACK_FILETYPE_MEMORYDATA);
             bool isCopied = pFileInfo->copiedMemoryData == nullptr;
             const char* bufData = isCopied ? pFileInfo->copiedMemoryData.get() : pFileInfo->observedMemoryData;
 
@@ -1051,23 +1050,28 @@ sjejhh_pack_file_info sjejhh_pack_context::GetOuterPackFileInfo(const SJEJHHPack
     switch (info.fileType)
     {
     case SJEJHH_PACK_FILETYPE_FILEPATH:
-        info.fileData = pFileInfo->fileHandleData->Get();
+    {
+        
+        info.filePathData.filePath = pFileInfo->filePath.native().c_str();
+        info.filePathData.filePathLen = pFileInfo->filePath.native().length();
+    }
         break;
     case SJEJHH_PACK_FILETYPE_MEMORYDATA:
     {
         bool isCopied = pFileInfo->copiedMemoryData != NULL;
         if (isCopied)
         {
-            info.fileData = pFileInfo->copiedMemoryData.get();
+            info.memoryData.data = pFileInfo->copiedMemoryData.get();
         }
         else
         {
-            info.fileData = pFileInfo->observedMemoryData;
+            info.memoryData.data = pFileInfo->observedMemoryData;
         }
+        info.memoryData.dataLen = pFileInfo->memoryDataLength;
     }
     break;
     default:
-        info.fileData = NULL;
+        assert(false);
         break;
     }
 

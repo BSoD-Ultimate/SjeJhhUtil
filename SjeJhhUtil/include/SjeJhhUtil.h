@@ -395,7 +395,6 @@ extern "C" {
 
     typedef enum _sjejhh_pack_file_type
     {
-        SJEJHH_PACK_FILETYPE_UNKNOWN,
         SJEJHH_PACK_FILETYPE_FILEPATH, 
         SJEJHH_PACK_FILETYPE_MEMORYDATA,
     }sjejhh_pack_file_type;
@@ -407,7 +406,20 @@ extern "C" {
         const wchar_t* filename;
         size_t filenameLength;
 
-        const void* fileData;
+        // data fields
+        union
+        {
+            struct 
+            {
+                const wchar_t* filePath;
+                size_t filePathLen;
+            }filePathData;
+            struct 
+            {
+                const void* data;
+                size_t dataLen;
+            }memoryData;
+        };
 
     }sjejhh_pack_file_info;
 
